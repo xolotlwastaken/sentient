@@ -4,63 +4,58 @@ const VIDEO_SRC = 'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIX
 
 export const BackgroundVideo: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const prevXRef = useRef<number | null>(null);
+  const targetTimeRef = useRef<number>(0);
+  const rafRef = useRef<number | null>(null);
 
   // Desktop Mouse Scrubbing Hook
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    let isSeeking = false;
-    let nextSeekTime: number | null = null;
+    // Ensure video is paused on desktop so it doesn't run away from cursor
+    if (window.innerWidth >= 1024) {
+      video.pause();
+    }
+
+    const seekToTarget = () => {
+      if (!video || !video.duration || Number.isNaN(video.duration)) return;
+      if (!video.seeking && Math.abs(video.currentTime - targetTimeRef.current) > 0.015) {
+        const maxTime = Math.max(0, video.duration - 0.02);
+        const clamped = Math.max(0, Math.min(targetTimeRef.current, maxTime));
+        video.currentTime = clamped;
+      }
+    };
 
     const handleSeeked = () => {
-      if (nextSeekTime !== null && video) {
-        const timeToSeek = nextSeekTime;
-        nextSeekTime = null;
-        video.currentTime = timeToSeek;
-      } else {
-        isSeeking = false;
-      }
+      seekToTarget();
     };
 
     video.addEventListener('seeked', handleSeeked);
 
     const handleMouseMove = (e: MouseEvent) => {
       if (window.innerWidth < 1024) return;
-      if (!video || !video.duration) return;
+      if (!video || !video.duration || Number.isNaN(video.duration)) return;
 
-      if (prevXRef.current === null) {
-        prevXRef.current = e.clientX;
-        return;
-      }
+      const progress = Math.max(0, Math.min(1, e.clientX / window.innerWidth));
+      targetTimeRef.current = progress * video.duration;
 
-      const delta = e.clientX - prevXRef.current;
-      prevXRef.current = e.clientX;
-
-      const current = video.currentTime || 0;
-      let targetTime = current + (delta / window.innerWidth) * 0.8 * video.duration;
-      targetTime = Math.max(0, Math.min(targetTime, video.duration));
-
-      if (!isSeeking) {
-        isSeeking = true;
-        video.currentTime = targetTime;
-      } else {
-        nextSeekTime = targetTime;
-      }
+      seekToTarget();
     };
 
-    const handleMouseLeave = () => {
-      prevXRef.current = null;
+    const loop = () => {
+      seekToTarget();
+      rafRef.current = requestAnimationFrame(loop);
     };
+    rafRef.current = requestAnimationFrame(loop);
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseleave', handleMouseLeave);
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseleave', handleMouseLeave);
       video.removeEventListener('seeked', handleSeeked);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
     };
   }, []);
 
@@ -73,9 +68,7 @@ export const BackgroundVideo: React.FC = () => {
       if (window.innerWidth < 1024) {
         video.autoplay = true;
         video.loop = true;
-        video.play().catch(() => {
-          // Autoplay policy muted playback fallback
-        });
+        video.play().catch(() => {});
       } else {
         video.pause();
       }
@@ -85,6 +78,8 @@ export const BackgroundVideo: React.FC = () => {
       video.autoplay = true;
       video.loop = true;
       video.play().catch(() => {});
+    } else {
+      video.pause();
     }
 
     window.addEventListener('resize', handleResize);
