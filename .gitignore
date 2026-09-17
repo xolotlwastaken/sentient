@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.vercel
+
+*.mp4
+*.zip
+sentient-hero-frame.png
